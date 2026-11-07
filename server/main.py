@@ -11,11 +11,13 @@ from pydantic import BaseModel
 BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
 
-DEEPSEEK_API_URL = "https://api.deepseek.com/chat/completions"
-DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
+OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openrouter/free")
+OPENROUTER_APP_NAME = os.getenv("OPENROUTER_APP_NAME", "StudyMate AI")
+OPENROUTER_SITE_URL = os.getenv("OPENROUTER_SITE_URL", "http://localhost:5500")
 
 # 创建 FastAPI 应用实例
-app = FastAPI(title="StudyMate AI API", version="0.1.0")
+app = FastAPI(title="StudyMate AI API", version="0.2.0")
 
 # 配置跨域（开发阶段允许所有来源，上线前应限制为实际前端地址）
 app.add_middleware(
@@ -40,13 +42,13 @@ class ChatResponse(BaseModel):
 
 
 def get_api_key() -> str:
-    """读取并检查 API Key，避免把 Key 写死在代码里。"""
-    api_key = os.getenv("DEEPSEEK_API_KEY", "").strip()
+    """读取并检查 OpenRouter API Key，避免把 Key 写死在代码里。"""
+    api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
 
     if not api_key or api_key == "your_key_here":
         raise HTTPException(
             status_code=500,
-            detail="未配置 DEEPSEEK_API_KEY，请在 server/.env 中填写真实 Key",
+            detail="未配置 OPENROUTER_API_KEY，请在 server/.env 中填写真实 Key",
         )
 
     return api_key
@@ -55,7 +57,11 @@ def get_api_key() -> str:
 # 接口 1：健康检查 (GET)
 @app.get("/api/health")
 def health_check():
-    return {"status": "ok", "model": DEEPSEEK_MODEL}
+    return {
+        "status": "ok",
+        "provider": "openrouter",
+        "model": OPENROUTER_MODEL,
+    }
 
 
 # 接口 2：真实 AI 聊天 (POST)
@@ -69,7 +75,7 @@ def chat(request: ChatRequest):
     api_key = get_api_key()
 
     payload = {
-        "model": DEEPSEEK_MODEL,
+        "model": OPENROUTER_MODEL,
         "messages": [
             {
                 "role": "system",
@@ -88,13 +94,16 @@ def chat(request: ChatRequest):
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
+        # 这两个请求头不是必需的，但 OpenRouter 会用它标记应用来源
+        "HTTP-Referer": OPENROUTER_SITE_URL,
+        "X-Title": OPENROUTER_APP_NAME,
     }
 
     try:
-        # 60 秒超时，避免网络异常时请求一直挂着
-        with httpx.Client(timeout=60.0) as client:
+        # 90 秒超时：免费路由可能需要排队或切换模型
+        with httpx.Client(timeout=90.0) as client:
             response = client.post(
-                DEEPSEEK_API_URL,
+                OPENROUTER_API_URL,
                 headers=headers,
                 json=payload,
             )
@@ -104,22 +113,36 @@ def chat(request: ChatRequest):
         status_code = exc.response.status_code
 
         if status_code == 401:
-            detail = "DeepSeek 认证失败，请检查 API Key 是否正确"
+            detail = "OpenRouter 认证失败，请检查 API Key 是否正确"
+        elif status_code == 402:
+            detail = "OpenRouter 余额不足，或免费额度已经用完"
+        elif status_code == 404:
+            detail = "OpenRouter 找不到该模型，请检查 OPENROUTER_MODEL"
         elif status_code == 429:
-            detail = "请求过于频繁或额度不足，请稍后再试"
+            detail = "请求过于频繁，请稍后再试"
         else:
-            detail = f"DeepSeek 请求失败（HTTP {status_code}）"
+            detail = f"OpenRouter 请求失败（HTTP {status_code}）"
+
+        # 尽量把 OpenRouter 返回的可读错误带给前端，方便排查
+        try:
+            error_body = exc.response.json()
+            upstream_message = error_body.get("error", {}).get("message")
+        except ValueError:
+            upstream_message = None
+
+        if upstream_message:
+            detail = f"{detail}：{str(upstream_message)[:160]}"
 
         raise HTTPException(status_code=502, detail=detail) from exc
     except httpx.RequestError as exc:
         raise HTTPException(
             status_code=502,
-            detail="无法连接 DeepSeek，请检查网络或代理设置",
+            detail="无法连接 OpenRouter，请检查网络或代理设置",
         ) from exc
     except ValueError as exc:
         raise HTTPException(
             status_code=502,
-            detail="DeepSeek 返回了无法解析的数据",
+            detail="OpenRouter 返回了无法解析的数据",
         ) from exc
 
     try:
@@ -127,10 +150,10 @@ def chat(request: ChatRequest):
     except (KeyError, IndexError, TypeError, AttributeError) as exc:
         raise HTTPException(
             status_code=502,
-            detail="DeepSeek 返回格式异常",
+            detail="OpenRouter 返回格式异常",
         ) from exc
 
     if not reply:
-        raise HTTPException(status_code=502, detail="DeepSeek 返回了空回复")
+        raise HTTPException(status_code=502, detail="OpenRouter 返回了空回复")
 
-    return ChatResponse(reply=reply, mock=False, model=DEEPSEEK_MODEL)
+    return ChatResponse(reply=reply, mock=False, model=OPENROUTER_MODEL)
