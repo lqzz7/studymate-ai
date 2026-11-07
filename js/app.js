@@ -1,13 +1,13 @@
 /* =========================================================
-   StudyMate AI · 第 1 周原型交互
+   StudyMate AI · 第 2 周前端交互
    目标：
    1. 发送消息并显示用户气泡
-   2. 用本地数据模拟 AI 回复
-   3. 输入框、按钮、示例问题、上传区的界面交互
+   2. 调用 FastAPI 后端，获取 OpenRouter 的真实回复
+   3. 后端不可用时，自动回退到本地模拟回复
+   4. 保留输入框、按钮、示例问题、上传区的界面交互
    说明：
-   - 不调用任何真实 API
+   - 不把 API Key 写进前端
    - 不上传、不读取文件内容
-   - 所有 AI 回复都标注为“演示回复”
    ========================================================= */
 
 (() => {
@@ -31,6 +31,10 @@
   const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
   const ALLOWED_EXTENSIONS = [".txt", ".md", ".markdown", ".pdf"];
   const MAX_INPUT_HEIGHT = 160;
+
+  // 本地后端地址；前端不接触 OpenRouter Key
+  const API_CHAT_URL = "http://127.0.0.1:8000/api/chat";
+  const REQUEST_TIMEOUT_MS = 95 * 1000; // 比后端 90 秒超时多留 5 秒
 
   const state = {
     isReplying: false,
@@ -147,57 +151,57 @@
     return message;
   }
 
-  /* ---------- 5. 本地模拟回复 ---------- */
+  /* ---------- 5. 本地模拟回复（后端不可用时的兜底） ---------- */
   function buildMockReply(question) {
     if (/你好|hello|hi/i.test(question)) {
       return [
-        "【演示回复】你好，我是 StudyMate AI。",
+        "【本地模拟】你好，我是 StudyMate AI。",
         "",
-        "现在还没有连接真实模型，但我可以演示对话流程。",
+        "当前没有连接上后端，所以我先用本地回复演示对话流程。",
         "你可以试试问我“帮我总结重点”或“出三道复习题”。",
       ].join("\n");
     }
 
     if (/总结|摘要|重点|概括/.test(question)) {
       return [
-        "【演示回复】这是模拟的资料总结效果：",
+        "【本地模拟】这是资料总结的示例：",
         "",
         "1. 核心概念：先用自己的话复述主题，确认没有理解偏差。",
         "2. 关键细节：记录定义、使用条件和典型例子。",
         "3. 易混点：把相似概念放在一起对比，比单独背诵更有效。",
         "",
-        "接入真实 AI 后，这里会读取你上传的资料，并生成对应摘要。",
+        "后端恢复后，这里会返回真实模型生成的摘要。",
       ].join("\n");
     }
 
     if (/复习|检验|测验|出题|问题/.test(question)) {
       return [
-        "【演示回复】先来 3 道模拟复习题：",
+        "【本地模拟】先来 3 道示例复习题：",
         "",
         "1. 这份资料想解决的核心问题是什么？",
         "2. 哪两个概念最容易混淆？请说明它们的区别。",
         "3. 如果用自己的话向同学解释，你会怎么讲？",
         "",
-        "正式版会根据资料内容自动生成题目和参考答案。",
+        "后端恢复后，这里会根据资料内容生成题目和参考答案。",
       ].join("\n");
     }
 
     if (/解释|简单|通俗|看不懂|举例/.test(question)) {
       return [
-        "【演示回复】可以这样理解：",
+        "【本地模拟】可以这样理解：",
         "",
         "把新知识想象成一张地图。先找到“主线概念”，再把它和已经会的内容连起来；",
         "孤立的知识点容易忘，有连接的知识点更容易被想起来。",
         "",
-        "这只是模拟解释，真实回答会在接入 API 后由模型生成。",
+        "这是本地兜底解释；后端恢复后会由真实模型回答。",
       ].join("\n");
     }
 
     return [
-      `【演示回复】我收到了你的问题：“${shorten(question)}”`,
+      `【本地模拟】我收到了你的问题：“${shorten(question)}”`,
       "",
-      "当前是本地模拟模式，还没有连接真实 AI API。",
-      "第 2 周我们会用后端接入 DeepSeek，让这里返回真正的回答。",
+      "当前无法连接后端，所以先使用本地模拟回复。",
+      "请确认 uvicorn 已在 8000 端口启动，然后重新发送。",
     ].join("\n");
   }
 
@@ -215,7 +219,80 @@
       input.scrollHeight > MAX_INPUT_HEIGHT ? "auto" : "hidden";
   }
 
-  function sendMessage(rawText) {
+  async function requestAIReply(message) {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(
+      () => controller.abort(),
+      REQUEST_TIMEOUT_MS
+    );
+
+    try {
+      const response = await fetch(API_CHAT_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message }),
+        signal: controller.signal,
+      });
+
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        let detail = `HTTP ${response.status}`;
+
+        if (data && typeof data.detail === "string") {
+          detail = data.detail;
+        } else if (data && Array.isArray(data.detail)) {
+          detail = "请求格式不正确";
+        }
+
+        throw new Error(detail);
+      }
+
+      if (!data || typeof data.reply !== "string" || !data.reply.trim()) {
+        throw new Error("后端返回格式异常");
+      }
+
+      return data.reply.trim();
+    } catch (error) {
+      if (error.name === "AbortError") {
+        throw new Error("请求超时，请稍后再试");
+      }
+
+      if (error instanceof TypeError) {
+        throw new Error("无法连接后端，请确认 uvicorn 已在 8000 端口启动");
+      }
+
+      throw error;
+    } finally {
+      window.clearTimeout(timeoutId);
+    }
+  }
+
+  function setModeBadge(online) {
+    const badge = document.querySelector(".mode-badge");
+    if (!badge) return;
+
+    badge.replaceChildren();
+
+    const dot = document.createElement("span");
+    dot.className = "mode-dot";
+    dot.setAttribute("aria-hidden", "true");
+
+    badge.append(dot, document.createTextNode(online ? "AI 已连接" : "本地模拟"));
+    badge.title = online
+      ? "正在使用后端 AI 回复"
+      : "后端不可用，当前使用本地模拟回复";
+  }
+
+  function buildFallbackReply(question, reason) {
+    return [
+      `⚠️ 无法获取真实回复：${reason}`,
+      "",
+      buildMockReply(question),
+    ].join("\n");
+  }
+
+  async function sendMessage(rawText) {
     const text = rawText.trim();
 
     // 空消息或上一条还在回复时，直接忽略
@@ -233,13 +310,19 @@
 
     const typingMessage = showTyping();
 
-    // 700–1200ms 后再出现回复，模拟真实网络等待
-    const delay = 700 + Math.round(Math.random() * 500);
+    try {
+      const reply = await requestAIReply(text);
 
-    window.setTimeout(() => {
       typingMessage.remove();
-      appendMessage("ai", buildMockReply(text));
+      appendMessage("ai", reply);
+      setModeBadge(true);
+    } catch (error) {
+      typingMessage.remove();
 
+      const reason = error instanceof Error ? error.message : "未知错误";
+      appendMessage("ai", buildFallbackReply(text, reason));
+      setModeBadge(false);
+    } finally {
       state.isReplying = false;
       chatLog.removeAttribute("aria-busy");
       updateSendState();
@@ -248,7 +331,7 @@
       if (document.activeElement === sendButton) {
         input.focus();
       }
-    }, delay);
+    }
   }
 
   /* ---------- 7. 输入框与示例问题 ---------- */
@@ -463,5 +546,13 @@
   updateSendState();
   autoResizeInput();
 
-  console.info("StudyMate AI 原型已加载：当前为本地模拟回复，未连接真实 API。");
+  const composerNote = document.querySelector(".composer-note");
+  if (composerNote) {
+    composerNote.textContent =
+      "回复由后端 AI 生成；后端不可用时自动回退到本地模拟。";
+  }
+
+  console.info(
+    "StudyMate AI 已加载：优先调用 http://127.0.0.1:8000/api/chat，失败时使用本地模拟。"
+  );
 })();
