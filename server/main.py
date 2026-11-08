@@ -3,7 +3,7 @@ from pathlib import Path
 
 import httpx
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -16,8 +16,16 @@ OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openrouter/free")
 OPENROUTER_APP_NAME = os.getenv("OPENROUTER_APP_NAME", "StudyMate AI")
 OPENROUTER_SITE_URL = os.getenv("OPENROUTER_SITE_URL", "http://localhost:5500")
 
+# 资料上传限制
+MAX_MATERIAL_SIZE = 10 * 1024 * 1024  # 10MB
+MATERIAL_PREVIEW_CHARS = 200
+ALLOWED_MATERIAL_EXTENSIONS = {".txt", ".md", ".markdown"}
+
+# 第 3 周先用内存保存一份“当前资料”，重启后端会清空
+active_material: dict | None = None
+
 # 创建 FastAPI 应用实例
-app = FastAPI(title="StudyMate AI API", version="0.2.0")
+app = FastAPI(title="StudyMate AI API", version="0.3.0")
 
 # 配置跨域（开发阶段允许所有来源，上线前应限制为实际前端地址）
 app.add_middleware(
@@ -41,6 +49,20 @@ class ChatResponse(BaseModel):
     model: str
 
 
+# 资料上传成功后的返回格式
+class MaterialInfo(BaseModel):
+    filename: str
+    chars: int
+    encoding: str
+    preview: str
+    active: bool = True
+
+
+# 清空资料后的返回格式
+class MaterialCleared(BaseModel):
+    active: bool = False
+
+
 def get_api_key() -> str:
     """读取并检查 OpenRouter API Key，避免把 Key 写死在代码里。"""
     api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
@@ -54,6 +76,29 @@ def get_api_key() -> str:
     return api_key
 
 
+def decode_material(raw: bytes) -> tuple[str, str]:
+    """把文本文件解码成字符串，返回 (文本, 实际编码)。"""
+    if b"\x00" in raw:
+        raise HTTPException(
+            status_code=400,
+            detail="这看起来不是文本文件，请上传 TXT 或 Markdown",
+        )
+
+    # 先试 UTF-8（兼容带 BOM 的文件），再试中文 Windows 常见的 GBK/GB18030
+    for encoding in ("utf-8", "utf-8-sig", "gb18030"):
+        try:
+            text = raw.decode(encoding)
+            normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+            return normalized, encoding
+        except UnicodeDecodeError:
+            continue
+
+    raise HTTPException(
+        status_code=400,
+        detail="无法识别文件编码，请使用 UTF-8 或 GBK 编码的文本文件",
+    )
+
+
 # 接口 1：健康检查 (GET)
 @app.get("/api/health")
 def health_check():
@@ -61,10 +106,69 @@ def health_check():
         "status": "ok",
         "provider": "openrouter",
         "model": OPENROUTER_MODEL,
+        "material_loaded": active_material is not None,
     }
 
 
-# 接口 2：真实 AI 聊天 (POST)
+# 接口 2：上传学习资料 (POST)
+@app.post("/api/materials", response_model=MaterialInfo)
+async def upload_material(file: UploadFile = File(...)):
+    global active_material
+
+    # 浏览器通常只传文件名；这里再去掉可能出现的路径部分
+    original_name = file.filename or "untitled.txt"
+    filename = original_name.replace("\\", "/").split("/")[-1]
+    extension = Path(filename).suffix.lower()
+
+    if extension not in ALLOWED_MATERIAL_EXTENSIONS:
+        raise HTTPException(
+            status_code=415,
+            detail="目前只支持 TXT / Markdown 文件",
+        )
+
+    raw = await file.read(MAX_MATERIAL_SIZE + 1)
+    await file.close()
+
+    if not raw:
+        raise HTTPException(status_code=400, detail="文件内容为空")
+
+    if len(raw) > MAX_MATERIAL_SIZE:
+        raise HTTPException(status_code=413, detail="文件不能超过 10MB")
+
+    text, encoding = decode_material(raw)
+
+    if not text.strip():
+        raise HTTPException(status_code=400, detail="文件内容为空")
+
+    # 只保存在内存中，不写入磁盘
+    active_material = {
+        "filename": filename,
+        "text": text,
+        "encoding": encoding,
+    }
+
+    preview = " ".join(text[:MATERIAL_PREVIEW_CHARS].split())
+    if len(text) > MATERIAL_PREVIEW_CHARS:
+        preview += "…"
+
+    return MaterialInfo(
+        filename=filename,
+        chars=len(text),
+        encoding=encoding,
+        preview=preview,
+        active=True,
+    )
+
+
+# 接口 3：清空当前资料 (DELETE)
+@app.delete("/api/materials", response_model=MaterialCleared)
+def clear_material():
+    global active_material
+    active_material = None
+    return MaterialCleared(active=False)
+
+
+# 接口 4：真实 AI 聊天 (POST)
 @app.post("/api/chat", response_model=ChatResponse)
 def chat(request: ChatRequest):
     message = request.message.strip()
