@@ -1,13 +1,14 @@
 /* =========================================================
-   StudyMate AI · 第 2 周前端交互
+   StudyMate AI · 第 3 周前端交互
    目标：
    1. 发送消息并显示用户气泡
    2. 调用 FastAPI 后端，获取 OpenRouter 的真实回复
    3. 后端不可用时，自动回退到本地模拟回复
-   4. 保留输入框、按钮、示例问题、上传区的界面交互
+   4. 上传 TXT / Markdown 资料，并显示上传状态
+   5. 上传成功后，可以一键总结当前资料
    说明：
    - 不把 API Key 写进前端
-   - 不上传、不读取文件内容
+   - 文件发送到自己的后端，再由后端交给模型
    ========================================================= */
 
 (() => {
@@ -29,15 +30,17 @@
 
   /* ---------- 2. 常量与状态 ---------- */
   const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
-  const ALLOWED_EXTENSIONS = [".txt", ".md", ".markdown", ".pdf"];
+  const ALLOWED_EXTENSIONS = [".txt", ".md", ".markdown"];
   const MAX_INPUT_HEIGHT = 160;
 
   // 本地后端地址；前端不接触 OpenRouter Key
   const API_CHAT_URL = "http://127.0.0.1:8000/api/chat";
+  const API_MATERIALS_URL = "http://127.0.0.1:8000/api/materials";
   const REQUEST_TIMEOUT_MS = 95 * 1000; // 比后端 90 秒超时多留 5 秒
 
   const state = {
     isReplying: false,
+    isUploading: false,
   };
 
   // 只在界面里记录文件信息，不保存文件内容
@@ -307,6 +310,7 @@
     state.isReplying = true;
     chatLog.setAttribute("aria-busy", "true");
     updateSendState();
+    updateSummarizeState();
 
     const typingMessage = showTyping();
 
@@ -326,6 +330,7 @@
       state.isReplying = false;
       chatLog.removeAttribute("aria-busy");
       updateSendState();
+      updateSummarizeState();
 
       // 如果用户是用鼠标点的发送按钮，回复后把焦点还给输入框
       if (document.activeElement === sendButton) {
@@ -371,8 +376,8 @@
     });
   });
 
-  /* ---------- 8. 资料上传区（仅界面） ---------- */
-  // 单独创建一行状态提示，用于“已添加 / 已跳过”的反馈
+  /* ---------- 8. 资料上传区 ---------- */
+  // 单独创建一行状态提示，用于上传中 / 成功 / 失败的反馈
   const uploadStatus = document.createElement("p");
   uploadStatus.className = "upload-hint";
   uploadStatus.setAttribute("role", "status");
@@ -390,6 +395,73 @@
     }, 4000);
   }
 
+  async function uploadMaterial(file) {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    // 不要手动设置 Content-Type，浏览器会自动生成 multipart 边界
+    const response = await fetch(API_MATERIALS_URL, {
+      method: "POST",
+      body: formData,
+    });
+
+    const data = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      let detail = `HTTP ${response.status}`;
+
+      if (data && typeof data.detail === "string") {
+        detail = data.detail;
+      } else if (data && Array.isArray(data.detail)) {
+        detail = "文件格式不正确";
+      }
+
+      throw new Error(detail);
+    }
+
+    return data;
+  }
+
+  function updateSummarizeState() {
+    const hasMaterial = selectedFiles.some(
+      (file) => file.status === "uploaded"
+    );
+
+    summarizeButton.disabled = !hasMaterial || state.isReplying;
+    summarizeButton.title = hasMaterial
+      ? "根据当前资料生成总结"
+      : "请先上传 TXT 或 Markdown 资料";
+
+    const tag = document.querySelector(".tag");
+    if (tag) {
+      tag.textContent = hasMaterial ? "已加载" : "TXT / MD";
+    }
+  }
+
+  async function removeMaterial(file) {
+    if (file.status === "uploading") return;
+
+    let warning = false;
+
+    try {
+      const response = await fetch(API_MATERIALS_URL, { method: "DELETE" });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+    } catch (error) {
+      warning = true;
+    }
+
+    selectedFiles = [];
+    renderFiles();
+
+    showUploadNotice(
+      warning
+        ? `已从界面移除 ${file.name}，但后端资料可能仍然存在`
+        : `已移除 ${file.name}`
+    );
+  }
+
   function renderFiles() {
     fileList.replaceChildren();
     fileCount.textContent = String(selectedFiles.length);
@@ -398,14 +470,16 @@
       const empty = document.createElement("li");
       empty.className = "file-empty";
       empty.id = "file-empty";
-      empty.textContent = "还没有资料。上传功能将在第 3 周接入。";
+      empty.textContent = "还没有资料。支持 TXT / Markdown。";
       fileList.append(empty);
+      updateSummarizeState();
       return;
     }
 
     selectedFiles.forEach((file) => {
       const item = document.createElement("li");
       item.className = "file-item";
+      item.title = file.error || file.name;
 
       const icon = document.createElement("span");
       icon.className = "file-item-icon";
@@ -421,7 +495,19 @@
 
       const size = document.createElement("span");
       size.className = "file-item-size";
-      size.textContent = formatFileSize(file.size);
+
+      let statusText = "";
+      if (file.status === "uploading") {
+        statusText = "上传中…";
+      } else if (file.status === "uploaded") {
+        statusText = `已加载 · ${file.chars} 字`;
+      } else if (file.status === "error") {
+        statusText = "上传失败";
+      }
+
+      size.textContent = statusText
+        ? `${formatFileSize(file.size)} · ${statusText}`
+        : formatFileSize(file.size);
 
       const removeButton = document.createElement("button");
       removeButton.type = "button";
@@ -429,71 +515,102 @@
       removeButton.textContent = "×";
       removeButton.setAttribute("aria-label", `移除 ${file.name}`);
 
-      removeButton.addEventListener("click", () => {
-        selectedFiles = selectedFiles.filter((itemFile) => itemFile.id !== file.id);
-        renderFiles();
-        showUploadNotice(`已从列表移除 ${file.name}`);
-      });
+      if (file.status === "uploading") {
+        removeButton.disabled = true;
+        removeButton.title = "上传中，请稍候";
+      } else {
+        removeButton.addEventListener("click", () => {
+          removeMaterial(file);
+        });
+      }
 
       info.append(name, size);
       item.append(icon, info, removeButton);
       fileList.append(item);
     });
+
+    updateSummarizeState();
   }
 
-  function addFiles(fileCollection) {
+  async function addFiles(fileCollection) {
     const incoming = Array.from(fileCollection || []);
     if (incoming.length === 0) return;
 
-    let added = 0;
-    let rejected = 0;
-    let duplicated = 0;
+    if (state.isUploading) {
+      showUploadNotice("请等待当前文件上传完成");
+      return;
+    }
 
-    incoming.forEach((file) => {
-      const extension = getExtension(file.name);
-      const allowed = ALLOWED_EXTENSIONS.includes(extension);
-      const sizeAllowed = file.size <= MAX_FILE_SIZE;
+    if (incoming.length > 1) {
+      showUploadNotice("目前一次只能上传一份资料，已使用第一个文件");
+    }
 
-      if (!allowed || !sizeAllowed) {
-        rejected += 1;
-        return;
+    const file = incoming[0];
+    const extension = getExtension(file.name);
+
+    if (!ALLOWED_EXTENSIONS.includes(extension)) {
+      showUploadNotice("目前只支持 TXT / Markdown 文件");
+      return;
+    }
+
+    if (file.size > MAX_FILE_SIZE) {
+      showUploadNotice("文件不能超过 10MB");
+      return;
+    }
+
+    state.isUploading = true;
+
+    // 先清空后端旧资料，避免新文件上传失败时继续使用旧资料
+    if (selectedFiles.length > 0) {
+      try {
+        await fetch(API_MATERIALS_URL, { method: "DELETE" });
+      } catch (error) {
+        // 清空失败也继续尝试上传，成功时后端会覆盖旧资料
       }
+    }
 
-      const exists = selectedFiles.some(
-        (item) => item.name === file.name && item.size === file.size
-      );
-
-      if (exists) {
-        duplicated += 1;
-        return;
-      }
-
-      selectedFiles.push({
+    selectedFiles = [
+      {
         id: nextFileId,
         name: file.name,
         size: file.size,
         extension: extension.replace(".", "").toUpperCase(),
-      });
-      nextFileId += 1;
-      added += 1;
-    });
+        status: "uploading",
+      },
+    ];
+    nextFileId += 1;
 
     renderFiles();
+    showUploadNotice("正在上传资料…");
 
-    const messages = [];
-    if (added > 0) {
-      messages.push(`已添加 ${added} 个文件（演示模式，不会上传）`);
-    }
-    if (duplicated > 0) {
-      messages.push(`跳过 ${duplicated} 个重复文件`);
-    }
-    if (rejected > 0) {
-      messages.push(`跳过 ${rejected} 个不支持或超过 10MB 的文件`);
-    }
-    if (messages.length > 0) {
-      showUploadNotice(messages.join("；"));
+    try {
+      const result = await uploadMaterial(file);
+
+      selectedFiles[0].status = "uploaded";
+      selectedFiles[0].chars = result.chars;
+      selectedFiles[0].encoding = result.encoding;
+
+      showUploadNotice(`已加载 ${result.filename}，共 ${result.chars} 字`);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "未知错误";
+      selectedFiles[0].status = "error";
+      selectedFiles[0].error = reason;
+      showUploadNotice(`上传失败：${reason}`);
+    } finally {
+      state.isUploading = false;
+      renderFiles();
     }
   }
+
+  summarizeButton.addEventListener("click", () => {
+    if (summarizeButton.disabled || state.isReplying) return;
+
+    const prompt = "请根据当前资料总结 3-5 个重点，分点说明。";
+    input.value = prompt;
+    updateSendState();
+    autoResizeInput();
+    sendMessage(prompt);
+  });
 
   fileInput.addEventListener("change", () => {
     addFiles(fileInput.files);
@@ -542,8 +659,17 @@
   });
 
   /* ---------- 9. 初始化 ---------- */
-  summarizeButton.title = "资料解析将在第 3 周接入";
+  fileInput.accept = ".txt,.md,.markdown";
+  uploadHint.textContent =
+    "支持 TXT、Markdown，单个文件不超过 10MB。资料只保存在后端内存中。";
+
+  const panelNote = document.querySelector(".panel-note");
+  if (panelNote) {
+    panelNote.textContent = "资料只在本次会话中有效，重启后端后需要重新上传。";
+  }
+
   updateSendState();
+  updateSummarizeState();
   autoResizeInput();
 
   const composerNote = document.querySelector(".composer-note");
@@ -553,6 +679,6 @@
   }
 
   console.info(
-    "StudyMate AI 已加载：优先调用 http://127.0.0.1:8000/api/chat，失败时使用本地模拟。"
+    "StudyMate AI 已加载：聊天接口 /api/chat，资料接口 /api/materials。"
   );
 })();
