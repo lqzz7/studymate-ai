@@ -55,6 +55,7 @@ class ChatResponse(BaseModel):
 class MaterialInfo(BaseModel):
     filename: str
     chars: int
+    size: int = 0
     encoding: str
     preview: str
     active: bool = True
@@ -137,6 +138,14 @@ def build_system_prompt() -> str:
     return prompt
 
 
+def build_material_preview(text: str) -> str:
+    """生成前端展示用的短预览。"""
+    preview = " ".join(text[:MATERIAL_PREVIEW_CHARS].split())
+    if len(text) > MATERIAL_PREVIEW_CHARS:
+        preview += "…"
+    return preview
+
+
 # 接口 1：健康检查 (GET)
 @app.get("/api/health")
 def health_check():
@@ -182,23 +191,39 @@ async def upload_material(file: UploadFile = File(...)):
     active_material = {
         "filename": filename,
         "text": text,
+        "size": len(raw),
         "encoding": encoding,
     }
-
-    preview = " ".join(text[:MATERIAL_PREVIEW_CHARS].split())
-    if len(text) > MATERIAL_PREVIEW_CHARS:
-        preview += "…"
 
     return MaterialInfo(
         filename=filename,
         chars=len(text),
+        size=len(raw),
         encoding=encoding,
-        preview=preview,
+        preview=build_material_preview(text),
         active=True,
     )
 
 
-# 接口 3：清空当前资料 (DELETE)
+# 接口 3：查询当前资料 (GET)
+@app.get("/api/materials")
+def get_material():
+    if active_material is None:
+        return {"active": False}
+
+    text = active_material["text"]
+
+    return {
+        "active": True,
+        "filename": active_material["filename"],
+        "chars": len(text),
+        "size": active_material.get("size", 0),
+        "encoding": active_material["encoding"],
+        "preview": build_material_preview(text),
+    }
+
+
+# 接口 4：清空当前资料 (DELETE)
 @app.delete("/api/materials", response_model=MaterialCleared)
 def clear_material():
     global active_material
@@ -206,7 +231,7 @@ def clear_material():
     return MaterialCleared(active=False)
 
 
-# 接口 4：真实 AI 聊天 (POST)
+# 接口 5：真实 AI 聊天 (POST)
 @app.post("/api/chat", response_model=ChatResponse)
 def chat(request: ChatRequest):
     message = request.message.strip()

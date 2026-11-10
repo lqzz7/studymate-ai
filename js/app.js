@@ -462,6 +462,39 @@
     );
   }
 
+  async function restoreMaterial() {
+    try {
+      const response = await fetch(API_MATERIALS_URL);
+      if (!response.ok) return;
+
+      const data = await response.json();
+
+      // 用户可能已经在上传新文件，这时不要覆盖当前界面
+      if (!data.active || selectedFiles.length > 0) return;
+
+      const extension = getExtension(data.filename)
+        .replace(".", "")
+        .toUpperCase();
+
+      selectedFiles = [
+        {
+          id: nextFileId,
+          name: data.filename,
+          size: data.size || 0,
+          extension,
+          chars: data.chars,
+          status: "uploaded",
+        },
+      ];
+      nextFileId += 1;
+
+      renderFiles();
+      showUploadNotice(`已恢复资料：${data.filename}`);
+    } catch (error) {
+      // 后端没启动时保持空状态，不打扰用户
+    }
+  }
+
   function renderFiles() {
     fileList.replaceChildren();
     fileCount.textContent = String(selectedFiles.length);
@@ -671,6 +704,7 @@
   updateSendState();
   updateSummarizeState();
   autoResizeInput();
+  restoreMaterial();
 
   const composerNote = document.querySelector(".composer-note");
   if (composerNote) {
