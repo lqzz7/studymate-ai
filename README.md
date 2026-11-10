@@ -2,9 +2,9 @@
 
 一个面向学习场景的 AI 学习资料助手。
 
-当前是 **第 2 周版本（v0.2）**：网页已经接入 FastAPI 后端，并通过 OpenRouter 调用真实 AI；后端不可用时会自动回退到本地模拟回复。
+当前是 **第 3 周版本（v0.3）**：网页已经接入 FastAPI 后端和 OpenRouter；可以上传 TXT / Markdown 资料，让 AI 依据资料回答和总结。后端不可用时会自动回退到本地模拟回复。
 
-- 最后更新：2026-11-07
+- 最后更新：2026-11-10
 - 运行方式：本地前端 + 本地后端
 - 技术栈：HTML5 / CSS3 / 原生 JavaScript / Python / FastAPI / OpenRouter
 
@@ -18,7 +18,7 @@ StudyMate AI 的目标是帮助学习者完成三件事：
 2. 让 AI 总结重点并依据资料回答问题
 3. 根据资料生成复习题
 
-目前已经完成“真实 AI 对话”这一层。资料读取、资料问答、复习题和历史记录会在后续阶段加入。
+目前已经完成“真实 AI 对话”和“TXT / Markdown 资料问答”两层。PDF 解析、多轮上下文、历史记录和线上部署会在后续阶段加入。
 
 ---
 
@@ -32,10 +32,13 @@ StudyMate AI 的目标是帮助学习者完成三件事：
 | FastAPI 后端 | ✅ |
 | OpenRouter 真实 AI 回复 | ✅ |
 | 后端不可用时本地回退 | ✅ |
-| 上传区界面与文件列表 | ✅（仅界面） |
-| 响应式布局 | ✅ |
-| 读取和解析资料内容 | ⬜ 第 3 周 |
-| 基于资料的总结与出题 | ⬜ 第 3 周 |
+| TXT / Markdown 上传与文本提取 | ✅ |
+| 后端只保留一份当前资料 | ✅ |
+| 基于资料回答与总结 | ✅ |
+| 刷新页面后恢复资料状态 | ✅ |
+| 上传区界面与文件列表 | ✅ |
+| PDF 解析 | ⬜ 后续 |
+| 多轮对话上下文 | ⬜ 后续 |
 | 对话历史保存 | ⬜ 第 4 周 |
 | 完整深色模式 | ⬜ 后续完善 |
 | 线上部署 | ⬜ 第 6 周 |
@@ -55,19 +58,24 @@ StudyMate AI 的目标是帮助学习者完成三件事：
 - “正在输入…”加载状态
 - 真实 AI 回复与本地模拟回退
 - 连接状态徽章：`AI 已连接` / `本地模拟`
-- 上传区界面：
-  - 点击选择或拖拽文件
-  - 显示文件名、大小、类型
-  - 文件计数
-  - 重复文件提示并跳过
-  - 不支持格式或超过 10MB 的文件提示并跳过
-  - 移除已添加文件
+- 资料上传：
+  - 点击选择或拖拽 TXT / Markdown
+  - 真正上传到后端
+  - 显示上传中 / 已加载 / 失败状态
+  - 一次只保留一份当前资料
+  - 超过 10MB 或不支持的格式会提示
+  - 移除文件时同时清空后端资料
+  - 刷新页面后恢复后端当前资料
+- 资料总结：上传成功后启用“总结资料重点”按钮
 - 桌面端双栏布局，窄屏自动切换为单栏
 
 ### 后端
 
 - `GET /api/health` 健康检查
-- `POST /api/chat` 聊天接口
+- `POST /api/materials` 上传并提取 TXT / Markdown 文本
+- `GET /api/materials` 查询当前资料
+- `DELETE /api/materials` 清空当前资料
+- `POST /api/chat` 聊天接口，自动带上当前资料
 - 从 `server/.env` 读取 OpenRouter Key
 - 90 秒请求超时
 - OpenRouter 错误状态转换
@@ -76,10 +84,10 @@ StudyMate AI 的目标是帮助学习者完成三件事：
 
 ### 暂未实现
 
-- 读取 TXT / Markdown / PDF 的内容
-- 真正的资料总结与资料问答
-- 自动生成复习题
+- PDF 解析
+- 多文件资料库
 - 多轮对话上下文
+- 独立的“生成复习题”按钮（目前可通过聊天提问）
 - 保存和查看历史对话
 - 用户登录、鉴权、限流
 - 流式输出
@@ -95,10 +103,11 @@ StudyMate AI 的目标是帮助学习者完成三件事：
 | CSS3 | 布局、主题变量、响应式、动效 |
 | 原生 JavaScript | 聊天交互、`fetch` 请求、本地回退 |
 | Python 3.12 | 后端运行时 |
-| FastAPI | 提供 `/api/health` 和 `/api/chat` |
+| FastAPI | 提供聊天和资料接口 |
 | Uvicorn | 启动 FastAPI 服务 |
 | httpx | 后端请求 OpenRouter |
 | python-dotenv | 从 `.env` 读取配置 |
+| python-multipart | 解析上传文件的 `multipart/form-data` |
 | OpenRouter | 提供真实 AI 模型调用 |
 | SQLite | 计划第 4 周用于保存历史记录 |
 
@@ -114,7 +123,7 @@ studymate-ai/
 ├── js/
 │   └── app.js              # 前端交互、调用后端、失败回退
 ├── server/
-│   ├── main.py             # FastAPI 接口与 OpenRouter 调用
+│   ├── main.py             # 聊天、资料接口与 OpenRouter 调用
 │   ├── requirements.txt    # Python 依赖
 │   ├── .env.example        # 环境变量模板
 │   └── .env                # 真实 Key，本地创建，不提交
@@ -231,24 +240,41 @@ http://localhost:5500
 
 ## 请求流程
 
+### 上传资料
+
+```text
+浏览器选择 TXT / Markdown
+        │  POST /api/materials（multipart/form-data）
+        ▼
+FastAPI 检查格式和大小 → 解码文本 → 保存到内存 active_material
+        │
+        ▼
+返回文件名、字数、编码和预览
+```
+
+### 聊天
+
 ```text
 浏览器（localhost:5500）
         │  POST /api/chat
         │  { "message": "什么是光合作用？" }
         ▼
 FastAPI（127.0.0.1:8000）
+        │  把 active_material 放进系统提示词
         │  Authorization: Bearer <OPENROUTER_API_KEY>
         ▼
 OpenRouter
         │  { "choices": [...] }
         ▼
 FastAPI 取出回复文字
-        │  { "reply": "...", "mock": false }
+        │  { "reply": "...", "mock": false, "used_material": true }
         ▼
 浏览器显示 AI 气泡
 ```
 
 API Key 只存在于后端和 OpenRouter 请求头中，浏览器看不到。
+
+上传的资料会随聊天请求发送给 OpenRouter 和模型提供方。
 
 ---
 
@@ -264,8 +290,48 @@ API Key 只存在于后端和 OpenRouter 请求头中，浏览器看不到。
 {
   "status": "ok",
   "provider": "openrouter",
-  "model": "openrouter/free"
+  "model": "openrouter/free",
+  "material_loaded": false
 }
+```
+
+### `POST /api/materials`
+
+上传资料，使用 `multipart/form-data`，字段名 `file`。
+
+只支持 `.txt`、`.md`、`.markdown`，最大 10MB。
+
+成功响应：
+
+```json
+{
+  "filename": "notes.md",
+  "chars": 128,
+  "size": 256,
+  "encoding": "utf-8",
+  "preview": "资料开头的一小段内容",
+  "active": true
+}
+```
+
+### `GET /api/materials`
+
+查询当前资料。
+
+没有资料时：
+
+```json
+{ "active": false }
+```
+
+有资料时返回文件名、字数、大小、编码和预览。
+
+### `DELETE /api/materials`
+
+清空当前资料：
+
+```json
+{ "active": false }
 ```
 
 ### `POST /api/chat`
@@ -284,16 +350,21 @@ API Key 只存在于后端和 OpenRouter 请求头中，浏览器看不到。
 {
   "reply": "光合作用是植物...",
   "mock": false,
-  "model": "openrouter/free"
+  "model": "openrouter/free",
+  "used_material": true
 }
 ```
+
+`used_material` 表示这次回答是否使用了当前资料。
 
 ### 常见状态码
 
 | 状态码 | 含义 |
 |---|---|
 | 200 | 成功 |
-| 400 | 消息为空 |
+| 400 | 消息为空，或资料内容为空 |
+| 413 | 上传文件超过 10MB |
+| 415 | 上传了不支持的文件格式 |
 | 422 | JSON 格式错误或缺少 `message` |
 | 500 | 后端没有配置 `OPENROUTER_API_KEY` |
 | 502 | OpenRouter 认证失败、额度不足、限流、网络错误等 |
@@ -311,8 +382,11 @@ API Key 只存在于后端和 OpenRouter 请求头中，浏览器看不到。
 5. 成功后显示真实回复，徽章变为 `AI 已连接`。
 6. 失败时显示错误原因，并回退到 `【本地模拟】` 回复，徽章变为 `本地模拟`。
 7. 点击示例问题可以填入输入框。
-8. 上传文件只会更新右侧列表，不会读取或上传内容。
-9. 刷新页面会清空消息和文件列表。
+8. 在右侧上传 TXT / Markdown，后端会读取文字并保存为当前资料。
+9. 上传成功后可以点击“总结资料重点”，或直接在聊天中提问。
+10. 点击文件右侧的 `×` 会同时清空后端资料。
+11. 刷新页面后，前端会向后端查询并恢复当前资料。
+12. 消息记录不会保存，刷新后聊天区会回到欢迎页。
 
 ---
 
@@ -349,18 +423,26 @@ API Key 只存在于后端和 OpenRouter 请求头中，浏览器看不到。
 - [ ] 停止后端时徽章变为 `本地模拟`
 - [ ] 重启后端后，再发送可以恢复真实回复
 
-### 上传区
+### 资料上传与问答
 
-- [ ] TXT / Markdown / PDF 文件可以加入列表
-- [ ] 文件计数正确
-- [ ] 重复文件被跳过
-- [ ] 超过 10MB 或不支持的格式被跳过
-- [ ] 点击 `×` 可以移除文件
+- [ ] TXT / Markdown 文件可以上传成功
+- [ ] 上传时显示“上传中…”
+- [ ] 上传成功后显示“已加载 · xx 字”
+- [ ] 上传成功后“总结资料重点”按钮启用
+- [ ] 上传 PDF 会提示只支持 TXT / Markdown
+- [ ] 超过 10MB 的文件会被拒绝
+- [ ] 问资料里有的内容，回答有依据
+- [ ] 问资料里没有的内容，回答“资料中未提及”
+- [ ] 点击“总结资料重点”能得到分点总结
+- [ ] 刷新页面后资料列表能恢复
+- [ ] 点击 `×` 后后端资料被清空
+- [ ] 清空后刷新页面，列表保持空状态
+- [ ] 重启后端后刷新页面，列表回到空状态
 
 ### 界面与安全
 
 - [ ] 900px 以下变成单栏，无横向滚动
-- [ ] 刷新后恢复欢迎页
+- [ ] 刷新后聊天区恢复欢迎页，资料列表按后端状态恢复
 - [ ] 控制台没有红色报错
 - [ ] `git status` 中看不到 `server/.env`
 - [ ] 仓库中没有真实 API Key
@@ -370,7 +452,11 @@ API Key 只存在于后端和 OpenRouter 请求头中，浏览器看不到。
 ## 已知限制
 
 - **没有多轮上下文**：前端每次只发送当前这一条消息，之前的对话不会传给后端。
-- **上传不解析**：只记录文件名、大小和扩展名，不读取内容。
+- **只支持 TXT / Markdown**：PDF、Word 等格式暂不解析。
+- **同时只有一份资料**：上传新文件会替换旧资料。
+- **资料只在内存中**：重启后端后需要重新上传；前端刷新会从后端恢复当前资料。
+- **资料会发送给模型提供方**：提问时当前资料会进入 OpenRouter 请求，敏感资料不要上传。
+- **提示词约束不是绝对安全**：模型仍可能忽略“资料中未提及”的要求；资料内的指令也可能造成提示词注入。
 - **没有历史记录**：刷新页面后消息全部丢失。
 - **没有流式输出**：要等模型生成完整回复，页面才显示文字。
 - **免费模型路由有波动**：`openrouter/free` 会随机选择免费模型，速度、质量和可用性可能变化。
@@ -387,9 +473,9 @@ API Key 只存在于后端和 OpenRouter 请求头中，浏览器看不到。
 - API Key 只保存在 `server/.env`
 - `.env` 已被 `.gitignore` 忽略
 - 前端代码不包含 Key
-- 浏览器只请求自己的后端 `/api/chat`
+- 浏览器只请求自己的后端 `/api/chat` 和 `/api/materials`
 - 后端错误信息不会返回 Key
-- 上传文件不会真正上传或读取
+- 上传文件只读取文本，不写入磁盘；但资料会随聊天请求发送给 OpenRouter
 
 上线前还需要：
 
@@ -419,21 +505,16 @@ API Key 只存在于后端和 OpenRouter 请求头中，浏览器看不到。
 
 ## 下一步
 
-### 第 3 周：让 AI 读取学习资料
+### 第 4 周：多轮对话与历史记录
 
-- 上传 TXT / Markdown 文件
-- 后端读取文本内容
-- 把资料内容加入提示词
-- 生成结构化摘要
-- 根据资料回答问题和生成复习题
-
-### 第 4 周：历史记录
-
+- 把最近的对话历史一起发送给后端
 - 使用 SQLite 保存对话
 - 查看和区分不同会话
 
 ### 第 5 周：完善产品
 
+- PDF / Word 等更多资料格式
+- 独立“生成复习题”按钮
 - 错误处理与边界测试
 - 提示词优化
 - 代码整理
@@ -454,10 +535,18 @@ API Key 只存在于后端和 OpenRouter 请求头中，浏览器看不到。
 | 2026-11-04 | 补充 README，完成 Git 首次提交和 GitHub 首次推送 |
 | 2026-11-05 | 创建 FastAPI 模拟后端，完成健康检查和固定回复 |
 | 2026-11-07 | 切换 OpenRouter，接入真实 AI，前端增加失败回退 |
+| 2026-11-08 | 增加资料上传接口，支持 TXT / Markdown 文本提取与 GBK 解码 |
+| 2026-11-09 | 资料写入聊天提示词，前端真正上传文件并支持总结按钮 |
+| 2026-11-10 | 刷新页面恢复当前资料，同步静态文案 |
 
 相关提交：
 
 ```text
+8765878 chore: sync static UI copy with material upload
+b1fce59 feat: restore active material on page load
+aaf559d feat: upload materials from frontend
+687594b feat: use uploaded material in chat prompt
+7f18bb4 feat: add text material upload API
 3f7ea0d feat: connect frontend to FastAPI backend
 c098223 feat: switch AI provider to OpenRouter
 b686585 feat: add FastAPI mock backend
