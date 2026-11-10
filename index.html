@@ -8,7 +8,7 @@
     name="description"
     content="StudyMate AI 是一个帮助你阅读资料、总结重点和生成复习题的 AI 学习助手。"
   />
-  <!-- 第 2 步会创建这个样式文件，现在打开页面会看到未加样式的结构 -->
+  <!-- 页面样式 -->
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
@@ -27,7 +27,7 @@
 
     <div class="header-meta">
       <span class="header-badge">AI 学习助手</span>
-      <span class="header-version">v0.1</span>
+      <span class="header-version">v0.3</span>
     </div>
   </header>
 
@@ -100,17 +100,17 @@
           </svg>
         </button>
       </form>
-      <p class="composer-note">演示版本：回复由本地模拟生成，尚未连接真实 AI API。</p>
+      <p class="composer-note">回复由后端 AI 生成；后端不可用时自动回退到本地模拟。</p>
     </section>
 
-    <!-- 资料上传区（第 1 周只做界面） -->
+    <!-- 资料上传区 -->
     <aside class="materials-panel" aria-labelledby="materials-title">
       <header class="panel-header">
         <div>
           <h2 class="panel-title" id="materials-title">学习资料</h2>
           <p class="panel-subtitle">添加一份资料，让回答更有依据</p>
         </div>
-        <span class="tag">仅界面</span>
+        <span class="tag">TXT / MD</span>
       </header>
 
       <!-- 用 label 关联隐藏的 file input：点击整块区域即可选择文件 -->
@@ -131,11 +131,10 @@
         class="visually-hidden"
         id="file-input"
         type="file"
-        accept=".txt,.md,.markdown,.pdf"
-        multiple
+        accept=".txt,.md,.markdown"
       />
       <p class="upload-hint">
-        支持 TXT、Markdown、PDF，单个文件不超过 10MB。演示阶段不会真正上传或解析。
+        支持 TXT、Markdown，单个文件不超过 10MB。资料只保存在后端内存中。
       </p>
 
       <div class="file-section">
@@ -145,23 +144,23 @@
         </div>
         <!-- 文件条目由 js/app.js 追加到这里 -->
         <ul class="file-list" id="file-list">
-          <li class="file-empty" id="file-empty">还没有资料。上传功能将在第 3 周接入。</li>
+          <li class="file-empty" id="file-empty">还没有资料。支持 TXT / Markdown。</li>
         </ul>
       </div>
 
       <button class="ghost-button" id="summarize-button" type="button" disabled>
         总结资料重点
       </button>
-      <p class="panel-note">文件只在浏览器界面中展示，不会发送到服务器。</p>
+      <p class="panel-note">资料只在本次会话中有效，重启后端后需要重新上传。</p>
     </aside>
   </main>
 
   <footer class="site-footer">
     <span>StudyMate AI</span>
-    <span>六周 AI 应用开发实战 · 第 1 周原型</span>
+    <span>六周 AI 应用开发实战 · 第 3 周 · 资料问答</span>
   </footer>
 
-  <!-- 第 3 步会创建这个脚本文件，现在浏览器控制台会出现 404 -->
+  <!-- 页面交互脚本 -->
   <script src="js/app.js" defer></script>
 </body>
 </html>
