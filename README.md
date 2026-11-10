@@ -57,6 +57,7 @@ StudyMate AI 的目标是帮助学习者完成三件事：
 - 输入框高度随内容自动调整
 - “正在输入…”加载状态
 - 真实 AI 回复与本地模拟回退
+- AI 回复支持 Markdown：标题、加粗、列表、引用、行内代码、代码块
 - 连接状态徽章：`AI 已连接` / `本地模拟`
 - 资料上传：
   - 点击选择或拖拽 TXT / Markdown
@@ -108,6 +109,8 @@ StudyMate AI 的目标是帮助学习者完成三件事：
 | httpx | 后端请求 OpenRouter |
 | python-dotenv | 从 `.env` 读取配置 |
 | python-multipart | 解析上传文件的 `multipart/form-data` |
+| marked | 把 AI 回复中的 Markdown 转成 HTML |
+| DOMPurify | 清理 AI 输出，移除危险标签和属性 |
 | OpenRouter | 提供真实 AI 模型调用 |
 | SQLite | 计划第 4 周用于保存历史记录 |
 
@@ -121,7 +124,10 @@ studymate-ai/
 ├── css/
 │   └── style.css           # 样式、响应式、动效
 ├── js/
-│   └── app.js              # 前端交互、调用后端、失败回退
+│   ├── app.js              # 前端交互、调用后端、失败回退
+│   └── vendor/
+│       ├── marked.min.js   # Markdown 转 HTML
+│       └── purify.min.js   # 清理危险 HTML
 ├── server/
 │   ├── main.py             # 聊天、资料接口与 OpenRouter 调用
 │   ├── requirements.txt    # Python 依赖
@@ -442,6 +448,9 @@ API Key 只存在于后端和 OpenRouter 请求头中，浏览器看不到。
 ### 界面与安全
 
 - [ ] 900px 以下变成单栏，无横向滚动
+- [ ] AI 回复中的加粗、列表、代码块正常显示
+- [ ] AI 返回 `<script>` 或 `<img onerror>` 时不会执行或显示
+- [ ] 用户输入 `<b>测试</b>` 时只显示文字，不生成 HTML
 - [ ] 刷新后聊天区恢复欢迎页，资料列表按后端状态恢复
 - [ ] 控制台没有红色报错
 - [ ] `git status` 中看不到 `server/.env`
@@ -476,6 +485,8 @@ API Key 只存在于后端和 OpenRouter 请求头中，浏览器看不到。
 - 浏览器只请求自己的后端 `/api/chat` 和 `/api/materials`
 - 后端错误信息不会返回 Key
 - 上传文件只读取文本，不写入磁盘；但资料会随聊天请求发送给 OpenRouter
+- AI 回复的 Markdown 会先经过 DOMPurify 清理，再写入页面
+- 用户自己输入的内容始终按纯文本显示，不会被当成 HTML 或 Markdown
 
 上线前还需要：
 
@@ -538,10 +549,12 @@ API Key 只存在于后端和 OpenRouter 请求头中，浏览器看不到。
 | 2026-11-08 | 增加资料上传接口，支持 TXT / Markdown 文本提取与 GBK 解码 |
 | 2026-11-09 | 资料写入聊天提示词，前端真正上传文件并支持总结按钮 |
 | 2026-11-10 | 刷新页面恢复当前资料，同步静态文案 |
+| 2026-11-10 | AI 回复支持安全的 Markdown 渲染（marked + DOMPurify） |
 
 相关提交：
 
 ```text
+6c42456 feat: render AI replies as sanitized markdown
 8765878 chore: sync static UI copy with material upload
 b1fce59 feat: restore active material on page load
 aaf559d feat: upload materials from frontend
