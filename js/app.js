@@ -110,13 +110,45 @@
     }
   }
 
+  function renderMarkdown(text) {
+    if (!window.marked || !window.DOMPurify) return null;
+
+    try {
+      const rawHtml = window.marked.parse(text, {
+        gfm: true,
+        breaks: true,
+      });
+
+      // AI 输出必须先清理，不能直接把原始内容塞进 innerHTML
+      return window.DOMPurify.sanitize(rawHtml, {
+        FORBID_TAGS: ["img", "iframe", "form", "input", "button"],
+        FORBID_ATTR: ["style", "onerror", "onload"],
+      });
+    } catch (error) {
+      return null;
+    }
+  }
+
   function appendMessage(role, text) {
     const { message, body } = createMessageShell(role);
 
     const bubble = document.createElement("div");
     bubble.className = "message-bubble";
-    // 用 textContent 而不是 innerHTML：用户输入不会被当成 HTML 执行
-    bubble.textContent = text;
+
+    if (role === "ai") {
+      const safeHtml = renderMarkdown(text);
+
+      if (safeHtml !== null) {
+        bubble.innerHTML = safeHtml;
+        bubble.classList.add("message-bubble--markdown");
+      } else {
+        // 库加载失败时退回纯文本，至少不会空白
+        bubble.textContent = text;
+      }
+    } else {
+      // 用户输入永远只显示为纯文本
+      bubble.textContent = text;
+    }
 
     const meta = document.createElement("span");
     meta.className = "message-meta";

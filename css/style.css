@@ -600,6 +600,134 @@ svg {
   box-shadow: var(--shadow-button);
 }
 
+/* AI 回复中的 Markdown 排版 */
+.message-bubble--markdown {
+  white-space: normal;
+}
+
+.message-bubble--markdown > :first-child {
+  margin-top: 0;
+}
+
+.message-bubble--markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.message-bubble--markdown p {
+  margin: 0 0 10px;
+}
+
+.message-bubble--markdown h1,
+.message-bubble--markdown h2,
+.message-bubble--markdown h3,
+.message-bubble--markdown h4 {
+  margin: 14px 0 8px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.message-bubble--markdown h1 {
+  font-size: 20px;
+}
+
+.message-bubble--markdown h2 {
+  font-size: 18px;
+}
+
+.message-bubble--markdown h3 {
+  font-size: 16px;
+}
+
+.message-bubble--markdown h4 {
+  font-size: 15px;
+}
+
+.message-bubble--markdown ul,
+.message-bubble--markdown ol {
+  margin: 8px 0 10px;
+  padding-left: 22px;
+}
+
+.message-bubble--markdown li + li {
+  margin-top: 4px;
+}
+
+.message-bubble--markdown strong {
+  font-weight: 700;
+}
+
+.message-bubble--markdown code {
+  padding: 2px 5px;
+  border-radius: 5px;
+  background: var(--primary-soft);
+  color: var(--primary-strong);
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono",
+    monospace;
+  font-size: 0.9em;
+}
+
+.message-bubble--markdown pre {
+  margin: 10px 0;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: #0f172a;
+  color: #e2e8f0;
+  overflow-x: auto;
+}
+
+.message-bubble--markdown pre code {
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 12.5px;
+}
+
+.message-bubble--markdown blockquote {
+  margin: 10px 0;
+  padding: 6px 12px;
+  border-left: 3px solid #c7d2fe;
+  border-radius: 0 8px 8px 0;
+  background: #f8faff;
+  color: var(--text-soft);
+}
+
+.message-bubble--markdown a {
+  color: var(--primary-strong);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.message-bubble--markdown a:hover {
+  color: #312e81;
+}
+
+.message-bubble--markdown hr {
+  margin: 12px 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+.message-bubble--markdown table {
+  display: block;
+  width: 100%;
+  margin: 10px 0;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.message-bubble--markdown th,
+.message-bubble--markdown td {
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  text-align: left;
+}
+
+.message-bubble--markdown th {
+  background: var(--surface-soft);
+  font-weight: 600;
+}
+
 .message-meta {
   padding: 0 4px;
   color: var(--muted);
