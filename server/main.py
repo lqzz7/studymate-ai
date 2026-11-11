@@ -59,6 +59,29 @@ class ChatResponse(BaseModel):
     conversation_id: int | None = None
 
 
+# 历史会话列表中的一项
+class ConversationSummary(BaseModel):
+    id: int
+    title: str
+    created_at: str
+    updated_at: str
+    message_count: int
+
+
+# 单条历史消息
+class MessageItem(BaseModel):
+    role: str
+    content: str
+    created_at: str
+
+
+# 某个会话的完整内容
+class ConversationDetail(BaseModel):
+    conversation_id: int
+    title: str
+    messages: list[MessageItem]
+
+
 # 资料上传成功后的返回格式
 class MaterialInfo(BaseModel):
     filename: str
@@ -360,4 +383,31 @@ def chat(request: ChatRequest):
         model=OPENROUTER_MODEL,
         used_material=used_material,
         conversation_id=conversation_id,
+    )
+
+
+# 接口 6：历史会话列表 (GET)
+@app.get("/api/conversations", response_model=list[ConversationSummary])
+def list_conversations():
+    return database.list_conversations()
+
+
+# 接口 7：某个会话的历史消息 (GET)
+@app.get(
+    "/api/conversations/{conversation_id}/messages",
+    response_model=ConversationDetail,
+)
+def get_conversation_messages(conversation_id: int):
+    conversation = database.get_conversation(conversation_id)
+
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="会话不存在")
+
+    # 历史页面先展示最近 50 条，避免一次返回过多
+    messages = database.get_messages(conversation_id, limit=50)
+
+    return ConversationDetail(
+        conversation_id=conversation_id,
+        title=conversation["title"],
+        messages=messages,
     )
