@@ -19,3 +19,10 @@ desktop.ini
 
 # 本地日志
 *.log
+
+# SQLite 数据库
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.db
