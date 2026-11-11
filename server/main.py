@@ -1,4 +1,5 @@
 import os
+import sqlite3
 from pathlib import Path
 
 import httpx
@@ -6,6 +7,8 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+
+import database
 
 # 明确从 server/.env 读取配置，避免受启动目录影响
 BASE_DIR = Path(__file__).resolve().parent
@@ -25,8 +28,11 @@ MAX_PROMPT_MATERIAL_CHARS = 12000
 # 第 3 周先用内存保存一份“当前资料”，重启后端会清空
 active_material: dict | None = None
 
+# 启动时创建 SQLite 表；重复执行不会清空已有数据
+database.init_db()
+
 # 创建 FastAPI 应用实例
-app = FastAPI(title="StudyMate AI API", version="0.3.0")
+app = FastAPI(title="StudyMate AI API", version="0.4.0")
 
 # 配置跨域（开发阶段允许所有来源，上线前应限制为实际前端地址）
 app.add_middleware(
@@ -41,6 +47,7 @@ app.add_middleware(
 # 定义前端发过来的请求格式（必须包含 message 字段）
 class ChatRequest(BaseModel):
     message: str
+    conversation_id: int | None = None
 
 
 # 定义返回给前端的格式
@@ -49,6 +56,7 @@ class ChatResponse(BaseModel):
     mock: bool = False
     model: str
     used_material: bool = False
+    conversation_id: int | None = None
 
 
 # 资料上传成功后的返回格式
@@ -239,15 +247,34 @@ def chat(request: ChatRequest):
     if not message:
         raise HTTPException(status_code=400, detail="消息不能为空")
 
+    conversation_id = request.conversation_id
+    is_new_conversation = conversation_id is None
+
+    if conversation_id is None:
+        history = []
+    else:
+        if database.get_conversation(conversation_id) is None:
+            raise HTTPException(status_code=404, detail="会话不存在")
+
+        # 只带最近 10 条，避免上下文无限增长
+        history = database.get_messages(conversation_id, limit=10)
+
     used_material = active_material is not None
     api_key = get_api_key()
 
+    messages = [{"role": "system", "content": build_system_prompt()}]
+
+    for item in history:
+        messages.append({
+            "role": item["role"],
+            "content": item["content"],
+        })
+
+    messages.append({"role": "user", "content": message})
+
     payload = {
         "model": OPENROUTER_MODEL,
-        "messages": [
-            {"role": "system", "content": build_system_prompt()},
-            {"role": "user", "content": message},
-        ],
+        "messages": messages,
         "temperature": 0.7,
         "stream": False,
     }
@@ -317,9 +344,20 @@ def chat(request: ChatRequest):
     if not reply:
         raise HTTPException(status_code=502, detail="OpenRouter 返回了空回复")
 
+    if is_new_conversation:
+        title = message.replace("\n", " ")[:30] or "新对话"
+        conversation_id = database.create_conversation(title)
+
+    try:
+        database.save_message(conversation_id, "user", message)
+        database.save_message(conversation_id, "assistant", reply)
+    except sqlite3.Error as exc:
+        raise HTTPException(status_code=500, detail="对话保存失败") from exc
+
     return ChatResponse(
         reply=reply,
         mock=False,
         model=OPENROUTER_MODEL,
         used_material=used_material,
+        conversation_id=conversation_id,
     )
