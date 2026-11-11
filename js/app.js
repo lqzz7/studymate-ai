@@ -41,6 +41,7 @@
   const state = {
     isReplying: false,
     isUploading: false,
+    conversationId: null,
   };
 
   // 只在界面里记录文件信息，不保存文件内容
@@ -262,10 +263,17 @@
     );
 
     try {
+      const requestBody = { message };
+
+      // 第二次提问开始，带上同一个会话编号，后端才能接上上下文
+      if (state.conversationId !== null) {
+        requestBody.conversation_id = state.conversationId;
+      }
+
       const response = await fetch(API_CHAT_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message }),
+        body: JSON.stringify(requestBody),
         signal: controller.signal,
       });
 
@@ -287,7 +295,10 @@
         throw new Error("后端返回格式异常");
       }
 
-      return data.reply.trim();
+      return {
+        reply: data.reply.trim(),
+        conversationId: data.conversation_id ?? null,
+      };
     } catch (error) {
       if (error.name === "AbortError") {
         throw new Error("请求超时，请稍后再试");
@@ -347,15 +358,25 @@
     const typingMessage = showTyping();
 
     try {
-      const reply = await requestAIReply(text);
+      const result = await requestAIReply(text);
+
+      if (result.conversationId !== null) {
+        state.conversationId = result.conversationId;
+      }
 
       typingMessage.remove();
-      appendMessage("ai", reply);
+      appendMessage("ai", result.reply);
       setModeBadge(true);
     } catch (error) {
       typingMessage.remove();
 
       const reason = error instanceof Error ? error.message : "未知错误";
+
+      // 后端数据库被清空或重启后，旧会话编号会失效，下次重新开一个
+      if (reason.includes("会话不存在")) {
+        state.conversationId = null;
+      }
+
       appendMessage("ai", buildFallbackReply(text, reason));
       setModeBadge(false);
     } finally {
