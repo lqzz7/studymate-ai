@@ -2,9 +2,9 @@
 
 一个面向学习场景的 AI 学习资料助手。
 
-当前是 **第 3 周版本（v0.3）**：网页已经接入 FastAPI 后端和 OpenRouter；可以上传 TXT / Markdown 资料，让 AI 依据资料回答和总结。后端不可用时会自动回退到本地模拟回复。
+当前是 **第 4 周版本（v0.4）**：网页已经接入 FastAPI、OpenRouter 和 SQLite；可以上传 TXT / Markdown 资料，让 AI 依据资料回答和总结；对话会保存到本地数据库，并支持多轮上下文与历史会话切换。后端不可用时会自动回退到本地模拟回复。
 
-- 最后更新：2026-11-10
+- 最后更新：2026-11-13
 - 运行方式：本地前端 + 本地后端
 - 技术栈：HTML5 / CSS3 / 原生 JavaScript / Python / FastAPI / OpenRouter
 
@@ -18,7 +18,7 @@ StudyMate AI 的目标是帮助学习者完成三件事：
 2. 让 AI 总结重点并依据资料回答问题
 3. 根据资料生成复习题
 
-目前已经完成“真实 AI 对话”和“TXT / Markdown 资料问答”两层。PDF 解析、多轮上下文、历史记录和线上部署会在后续阶段加入。
+目前已经完成“真实 AI 对话”“TXT / Markdown 资料问答”和“多轮对话 + SQLite 历史记录”三层。PDF 解析、用户鉴权和线上部署会在后续阶段加入。
 
 ---
 
@@ -37,9 +37,12 @@ StudyMate AI 的目标是帮助学习者完成三件事：
 | 基于资料回答与总结 | ✅ |
 | 刷新页面后恢复资料状态 | ✅ |
 | 上传区界面与文件列表 | ✅ |
+| 多轮对话上下文 | ✅ |
+| SQLite 对话保存 | ✅ |
+| 历史会话列表与切换 | ✅ |
+| 刷新页面后恢复最近会话 | ✅ |
+| 删除 / 重命名会话 | ⬜ 后续 |
 | PDF 解析 | ⬜ 后续 |
-| 多轮对话上下文 | ⬜ 后续 |
-| 对话历史保存 | ⬜ 第 4 周 |
 | 完整深色模式 | ⬜ 后续完善 |
 | 线上部署 | ⬜ 第 6 周 |
 
@@ -68,6 +71,12 @@ StudyMate AI 的目标是帮助学习者完成三件事：
   - 移除文件时同时清空后端资料
   - 刷新页面后恢复后端当前资料
 - 资料总结：上传成功后启用“总结资料重点”按钮
+- 历史会话：
+  - 顶部下拉框列出历史会话和消息数量
+  - 点击“＋ 新对话”从空白开始
+  - 切换会话时加载对应消息
+  - 刷新页面自动恢复最近一次会话
+  - AI 回复期间禁用切换，避免状态错乱
 - 桌面端双栏布局，窄屏自动切换为单栏
 
 ### 后端
@@ -76,7 +85,10 @@ StudyMate AI 的目标是帮助学习者完成三件事：
 - `POST /api/materials` 上传并提取 TXT / Markdown 文本
 - `GET /api/materials` 查询当前资料
 - `DELETE /api/materials` 清空当前资料
-- `POST /api/chat` 聊天接口，自动带上当前资料
+- `POST /api/chat` 聊天接口，自动带上当前资料和最近 10 条历史消息
+- `GET /api/conversations` 历史会话列表
+- `GET /api/conversations/{id}/messages` 某个会话的消息
+- 使用 SQLite 保存会话和消息
 - 从 `server/.env` 读取 OpenRouter Key
 - 90 秒请求超时
 - OpenRouter 错误状态转换
@@ -85,11 +97,11 @@ StudyMate AI 的目标是帮助学习者完成三件事：
 
 ### 暂未实现
 
-- PDF 解析
+- 删除 / 重命名历史会话
+- 历史消息分页（目前只显示最近 50 条）
 - 多文件资料库
-- 多轮对话上下文
 - 独立的“生成复习题”按钮（目前可通过聊天提问）
-- 保存和查看历史对话
+- PDF 解析
 - 用户登录、鉴权、限流
 - 流式输出
 - 自动化测试与线上部署
@@ -112,7 +124,7 @@ StudyMate AI 的目标是帮助学习者完成三件事：
 | marked | 把 AI 回复中的 Markdown 转成 HTML |
 | DOMPurify | 清理 AI 输出，移除危险标签和属性 |
 | OpenRouter | 提供真实 AI 模型调用 |
-| SQLite | 计划第 4 周用于保存历史记录 |
+| SQLite | 本地保存会话和消息，刷新/重启后仍可读取 |
 
 ---
 
@@ -130,9 +142,11 @@ studymate-ai/
 │       └── purify.min.js   # 清理危险 HTML
 ├── server/
 │   ├── main.py             # 聊天、资料接口与 OpenRouter 调用
+│   ├── database.py         # SQLite 会话和消息操作
 │   ├── requirements.txt    # Python 依赖
 │   ├── .env.example        # 环境变量模板
-│   └── .env                # 真实 Key，本地创建，不提交
+│   ├── .env                # 真实 Key，本地创建，不提交
+│   └── studymate.db        # 本地数据库，自动生成，不提交
 ├── .gitignore              # 忽略 .env、缓存和系统文件
 ├── .gitattributes          # 统一换行符
 └── README.md               # 本文件
@@ -263,19 +277,47 @@ FastAPI 检查格式和大小 → 解码文本 → 保存到内存 active_materi
 ```text
 浏览器（localhost:5500）
         │  POST /api/chat
-        │  { "message": "什么是光合作用？" }
+        │  { "message": "...", "conversation_id": 1 }
         ▼
 FastAPI（127.0.0.1:8000）
-        │  把 active_material 放进系统提示词
+        │  没有 conversation_id 就准备新建会话
+        │  有编号就检查会话是否存在
+        ▼
+从 SQLite 读取最近 10 条消息
+        │
+        ▼
+系统提示词（含当前资料）+ 历史消息 + 当前问题
         │  Authorization: Bearer <OPENROUTER_API_KEY>
         ▼
 OpenRouter
         │  { "choices": [...] }
         ▼
 FastAPI 取出回复文字
-        │  { "reply": "...", "mock": false, "used_material": true }
+        │
+        ├─ 保存用户消息到 SQLite
+        ├─ 保存 AI 回复到 SQLite
+        │
+        ▼
+{ "reply": "...", "conversation_id": 1, "used_material": true }
+        │
         ▼
 浏览器显示 AI 气泡
+```
+
+### 历史会话
+
+```text
+GET /api/conversations
+        ▼
+SQLite 查询所有会话和消息数量
+        ▼
+前端填充历史下拉框
+
+GET /api/conversations/{id}/messages
+        ▼
+读取某个会话最近 50 条消息
+        ▼
+前端重新渲染历史聊天
 ```
 
 API Key 只存在于后端和 OpenRouter 请求头中，浏览器看不到。
@@ -346,9 +388,12 @@ API Key 只存在于后端和 OpenRouter 请求头中，浏览器看不到。
 
 ```json
 {
-  "message": "什么是光合作用？"
+  "message": "什么是光合作用？",
+  "conversation_id": 1
 }
 ```
+
+`conversation_id` 可以省略。省略时后端会新建会话。
 
 成功响应：
 
@@ -357,11 +402,50 @@ API Key 只存在于后端和 OpenRouter 请求头中，浏览器看不到。
   "reply": "光合作用是植物...",
   "mock": false,
   "model": "openrouter/free",
-  "used_material": true
+  "used_material": true,
+  "conversation_id": 1
 }
 ```
 
 `used_material` 表示这次回答是否使用了当前资料。
+
+`conversation_id` 要保存到前端，下一次提问继续使用。
+
+### `GET /api/conversations`
+
+返回所有历史会话，按最后更新时间倒序：
+
+```json
+[
+  {
+    "id": 1,
+    "title": "光合作用复习",
+    "created_at": "2026-11-13T08:00:00+00:00",
+    "updated_at": "2026-11-13T08:10:00+00:00",
+    "message_count": 4
+  }
+]
+```
+
+### `GET /api/conversations/{id}/messages`
+
+返回某个会话的标题和最近 50 条消息：
+
+```json
+{
+  "conversation_id": 1,
+  "title": "光合作用复习",
+  "messages": [
+    {
+      "role": "user",
+      "content": "光合作用发生在哪里？",
+      "created_at": "2026-11-13T08:00:00+00:00"
+    }
+  ]
+}
+```
+
+会话不存在时返回 `404`。
 
 ### 常见状态码
 
@@ -371,6 +455,7 @@ API Key 只存在于后端和 OpenRouter 请求头中，浏览器看不到。
 | 400 | 消息为空，或资料内容为空 |
 | 413 | 上传文件超过 10MB |
 | 415 | 上传了不支持的文件格式 |
+| 404 | 指定的会话不存在 |
 | 422 | JSON 格式错误或缺少 `message` |
 | 500 | 后端没有配置 `OPENROUTER_API_KEY` |
 | 502 | OpenRouter 认证失败、额度不足、限流、网络错误等 |
@@ -392,7 +477,11 @@ API Key 只存在于后端和 OpenRouter 请求头中，浏览器看不到。
 9. 上传成功后可以点击“总结资料重点”，或直接在聊天中提问。
 10. 点击文件右侧的 `×` 会同时清空后端资料。
 11. 刷新页面后，前端会向后端查询并恢复当前资料。
-12. 消息记录不会保存，刷新后聊天区会回到欢迎页。
+12. 连续提问会继续使用同一个 `conversation_id`，AI 能接上上下文。
+13. 顶部下拉框可以查看并切换历史会话。
+14. 点击“＋ 新对话”会清空聊天区，下一次提问创建新会话。
+15. 刷新页面后，会自动加载最近一次会话及其消息。
+16. 会话和消息保存在 `server/studymate.db`，重启后端不会丢失。
 
 ---
 
@@ -418,6 +507,18 @@ API Key 只存在于后端和 OpenRouter 请求头中，浏览器看不到。
 - [ ] 回复内容不是 `【本地模拟】`
 - [ ] 中文输入法选词时按 `Enter` 不会误发送
 - [ ] `Shift + Enter` 只换行，不发送
+
+### 多轮对话与历史记录
+
+- [ ] 第一次提问后返回 `conversation_id`
+- [ ] 第二次提问的请求里带上同一个 `conversation_id`
+- [ ] 追问“它还需要什么”能接上上一轮
+- [ ] 顶部下拉框显示历史会话和消息数量
+- [ ] 切换会话后显示对应消息
+- [ ] 点击“＋ 新对话”清空聊天区并恢复欢迎页
+- [ ] 刷新页面后自动加载最近一次会话
+- [ ] 重启后端后历史记录仍然存在
+- [ ] 请求不存在的会话返回 404
 
 ### 错误与回退
 
@@ -451,7 +552,7 @@ API Key 只存在于后端和 OpenRouter 请求头中，浏览器看不到。
 - [ ] AI 回复中的加粗、列表、代码块正常显示
 - [ ] AI 返回 `<script>` 或 `<img onerror>` 时不会执行或显示
 - [ ] 用户输入 `<b>测试</b>` 时只显示文字，不生成 HTML
-- [ ] 刷新后聊天区恢复欢迎页，资料列表按后端状态恢复
+- [ ] 刷新后恢复最近会话；没有历史时显示欢迎页，资料列表按后端状态恢复
 - [ ] 控制台没有红色报错
 - [ ] `git status` 中看不到 `server/.env`
 - [ ] 仓库中没有真实 API Key
@@ -460,13 +561,14 @@ API Key 只存在于后端和 OpenRouter 请求头中，浏览器看不到。
 
 ## 已知限制
 
-- **没有多轮上下文**：前端每次只发送当前这一条消息，之前的对话不会传给后端。
 - **只支持 TXT / Markdown**：PDF、Word 等格式暂不解析。
-- **同时只有一份资料**：上传新文件会替换旧资料。
+- **同时只有一份资料**：上传新文件会替换旧资料，所有会话共用这份资料。
 - **资料只在内存中**：重启后端后需要重新上传；前端刷新会从后端恢复当前资料。
 - **资料会发送给模型提供方**：提问时当前资料会进入 OpenRouter 请求，敏感资料不要上传。
 - **提示词约束不是绝对安全**：模型仍可能忽略“资料中未提及”的要求；资料内的指令也可能造成提示词注入。
-- **没有历史记录**：刷新页面后消息全部丢失。
+- **历史消息只显示最近 50 条**：暂时没有分页。
+- **不能删除或重命名会话**：目前只能新建和切换。
+- **多标签页不会实时同步**：一个标签页新增消息，另一个标签页需要刷新才能看到。
 - **没有流式输出**：要等模型生成完整回复，页面才显示文字。
 - **免费模型路由有波动**：`openrouter/free` 会随机选择免费模型，速度、质量和可用性可能变化。
 - **CORS 仍是开发配置**：后端当前允许所有来源，上线前需要限制。
@@ -487,6 +589,8 @@ API Key 只存在于后端和 OpenRouter 请求头中，浏览器看不到。
 - 上传文件只读取文本，不写入磁盘；但资料会随聊天请求发送给 OpenRouter
 - AI 回复的 Markdown 会先经过 DOMPurify 清理，再写入页面
 - 用户自己输入的内容始终按纯文本显示，不会被当成 HTML 或 Markdown
+- `server/studymate.db` 被 `.gitignore` 忽略，数据库不提交
+- 数据库中只保存会话和消息，不保存 API Key
 
 上线前还需要：
 
@@ -516,15 +620,11 @@ API Key 只存在于后端和 OpenRouter 请求头中，浏览器看不到。
 
 ## 下一步
 
-### 第 4 周：多轮对话与历史记录
-
-- 把最近的对话历史一起发送给后端
-- 使用 SQLite 保存对话
-- 查看和区分不同会话
-
 ### 第 5 周：完善产品
 
 - PDF / Word 等更多资料格式
+- 删除 / 重命名历史会话
+- 历史消息分页
 - 独立“生成复习题”按钮
 - 错误处理与边界测试
 - 提示词优化
@@ -550,10 +650,17 @@ API Key 只存在于后端和 OpenRouter 请求头中，浏览器看不到。
 | 2026-11-09 | 资料写入聊天提示词，前端真正上传文件并支持总结按钮 |
 | 2026-11-10 | 刷新页面恢复当前资料，同步静态文案 |
 | 2026-11-10 | AI 回复支持安全的 Markdown 渲染（marked + DOMPurify） |
+| 2026-11-11 | 增加 SQLite 数据层，聊天保存消息并支持多轮上下文 |
+| 2026-11-13 | 增加历史会话接口和前端历史界面，刷新恢复最近会话 |
 
 相关提交：
 
 ```text
+67ad593 feat: add conversation history UI
+bd533eb feat: keep conversation id across messages
+ed39eb6 feat: add conversation history endpoints
+22ad497 feat: persist conversations and add chat context
+9185884 feat: add SQLite conversation storage
 6c42456 feat: render AI replies as sanitized markdown
 8765878 chore: sync static UI copy with material upload
 b1fce59 feat: restore active material on page load
