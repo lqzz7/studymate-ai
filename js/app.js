@@ -20,6 +20,8 @@
   const composer = document.getElementById("composer");
   const input = document.getElementById("message-input");
   const sendButton = document.getElementById("send-button");
+  const conversationSelect = document.getElementById("conversation-select");
+  const newChatButton = document.getElementById("new-chat-button");
 
   const dropzone = document.getElementById("dropzone");
   const fileInput = document.getElementById("file-input");
@@ -36,6 +38,7 @@
   // 本地后端地址；前端不接触 OpenRouter Key
   const API_CHAT_URL = "http://127.0.0.1:8000/api/chat";
   const API_MATERIALS_URL = "http://127.0.0.1:8000/api/materials";
+  const API_CONVERSATIONS_URL = "http://127.0.0.1:8000/api/conversations";
   const REQUEST_TIMEOUT_MS = 95 * 1000; // 比后端 90 秒超时多留 5 秒
 
   const state = {
@@ -59,6 +62,19 @@
     const hours = String(date.getHours()).padStart(2, "0");
     const minutes = String(date.getMinutes()).padStart(2, "0");
     return `${hours}:${minutes}`;
+  }
+
+  function formatHistoryTime(value) {
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) return "";
+
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    const hours = String(date.getHours()).padStart(2, "0");
+    const minutes = String(date.getMinutes()).padStart(2, "0");
+
+    return `${month}-${day} ${hours}:${minutes}`;
   }
 
   function formatFileSize(bytes) {
@@ -111,6 +127,16 @@
     }
   }
 
+  function showWelcome() {
+    if (!welcome.isConnected) {
+      chatLog.append(welcome);
+    }
+  }
+
+  function clearChatLog() {
+    chatLog.replaceChildren();
+  }
+
   function renderMarkdown(text) {
     if (!window.marked || !window.DOMPurify) return null;
 
@@ -130,7 +156,7 @@
     }
   }
 
-  function appendMessage(role, text) {
+  function appendMessage(role, text, metaText = null) {
     const { message, body } = createMessageShell(role);
 
     const bubble = document.createElement("div");
@@ -153,10 +179,15 @@
 
     const meta = document.createElement("span");
     meta.className = "message-meta";
-    meta.textContent =
-      role === "user"
-        ? `你 · ${formatClock()}`
-        : `StudyMate AI · 演示回复 · ${formatClock()}`;
+
+    if (metaText) {
+      meta.textContent = metaText;
+    } else {
+      meta.textContent =
+        role === "user"
+          ? `你 · ${formatClock()}`
+          : `StudyMate AI · ${formatClock()}`;
+    }
 
     body.append(bubble, meta);
     chatLog.append(message);
@@ -354,6 +385,7 @@
     chatLog.setAttribute("aria-busy", "true");
     updateSendState();
     updateSummarizeState();
+    updateHistoryControls();
 
     const typingMessage = showTyping();
 
@@ -367,6 +399,7 @@
       typingMessage.remove();
       appendMessage("ai", result.reply);
       setModeBadge(true);
+      refreshConversationList(state.conversationId);
     } catch (error) {
       typingMessage.remove();
 
@@ -375,6 +408,7 @@
       // 后端数据库被清空或重启后，旧会话编号会失效，下次重新开一个
       if (reason.includes("会话不存在")) {
         state.conversationId = null;
+        refreshConversationList(null);
       }
 
       appendMessage("ai", buildFallbackReply(text, reason));
@@ -384,6 +418,7 @@
       chatLog.removeAttribute("aria-busy");
       updateSendState();
       updateSummarizeState();
+      updateHistoryControls();
 
       // 如果用户是用鼠标点的发送按钮，回复后把焦点还给输入框
       if (document.activeElement === sendButton) {
@@ -392,7 +427,125 @@
     }
   }
 
-  /* ---------- 7. 输入框与示例问题 ---------- */
+  /* ---------- 7. 历史会话 ---------- */
+  async function fetchConversations() {
+    const response = await fetch(API_CONVERSATIONS_URL);
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    return response.json();
+  }
+
+  function renderConversationOptions(conversations, selectedId = null) {
+    conversationSelect.replaceChildren();
+
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = conversations.length ? "历史记录" : "暂无历史";
+    conversationSelect.append(placeholder);
+
+    conversations.forEach((conversation) => {
+      const option = document.createElement("option");
+      option.value = String(conversation.id);
+      option.textContent = `${conversation.title}（${conversation.message_count} 条）`;
+      conversationSelect.append(option);
+    });
+
+    conversationSelect.value = selectedId === null ? "" : String(selectedId);
+  }
+
+  async function openConversation(conversationId, options = {}) {
+    if (state.isReplying) return;
+
+    try {
+      const response = await fetch(
+        `${API_CONVERSATIONS_URL}/${conversationId}/messages`
+      );
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const detail = await response.json();
+      state.conversationId = detail.conversation_id;
+
+      clearChatLog();
+
+      if (detail.messages.length === 0) {
+        showWelcome();
+      } else {
+        detail.messages.forEach((item) => {
+          const isAi = item.role === "assistant";
+          const role = isAi ? "ai" : "user";
+          const label = isAi ? "StudyMate AI" : "你";
+          const time = formatHistoryTime(item.created_at);
+
+          appendMessage(role, item.content, `${label} · ${time}`);
+        });
+      }
+
+      conversationSelect.value = String(detail.conversation_id);
+      updateHistoryControls();
+    } catch (error) {
+      conversationSelect.value =
+        state.conversationId === null ? "" : String(state.conversationId);
+
+      if (!options.silent) {
+        console.warn("加载历史会话失败：", error);
+      }
+    }
+  }
+
+  function startNewConversation() {
+    if (state.isReplying) return;
+
+    state.conversationId = null;
+    clearChatLog();
+    showWelcome();
+    conversationSelect.value = "";
+    input.value = "";
+    updateSendState();
+    autoResizeInput();
+    input.focus();
+  }
+
+  async function refreshConversationList(selectedId = state.conversationId) {
+    try {
+      const conversations = await fetchConversations();
+      renderConversationOptions(conversations, selectedId);
+    } catch (error) {
+      // 后端没启动时保留当前列表
+    }
+  }
+
+  async function restoreLatestConversation() {
+    try {
+      const conversations = await fetchConversations();
+      renderConversationOptions(conversations);
+
+      // 用户可能已经发消息或切换了会话，避免覆盖当前界面
+      if (
+        conversations.length === 0 ||
+        state.conversationId !== null ||
+        state.isReplying
+      ) {
+        return;
+      }
+
+      await openConversation(conversations[0].id, { silent: true });
+    } catch (error) {
+      // 后端没启动时保持欢迎页
+    }
+  }
+
+  function updateHistoryControls() {
+    conversationSelect.disabled = state.isReplying;
+    newChatButton.disabled = state.isReplying;
+  }
+
+  /* ---------- 8. 输入框与示例问题 ---------- */
   composer.addEventListener("submit", (event) => {
     event.preventDefault();
     sendMessage(input.value);
@@ -429,7 +582,18 @@
     });
   });
 
-  /* ---------- 8. 资料上传区 ---------- */
+  conversationSelect.addEventListener("change", () => {
+    if (!conversationSelect.value) {
+      startNewConversation();
+      return;
+    }
+
+    openConversation(Number(conversationSelect.value));
+  });
+
+  newChatButton.addEventListener("click", startNewConversation);
+
+  /* ---------- 9. 资料上传区 ---------- */
   // 单独创建一行状态提示，用于上传中 / 成功 / 失败的反馈
   const uploadStatus = document.createElement("p");
   uploadStatus.className = "upload-hint";
@@ -744,7 +908,7 @@
     event.preventDefault();
   });
 
-  /* ---------- 9. 初始化 ---------- */
+  /* ---------- 10. 初始化 ---------- */
   fileInput.accept = ".txt,.md,.markdown";
   uploadHint.textContent =
     "支持 TXT、Markdown，单个文件不超过 10MB。资料只保存在后端内存中。";
@@ -756,8 +920,10 @@
 
   updateSendState();
   updateSummarizeState();
+  updateHistoryControls();
   autoResizeInput();
   restoreMaterial();
+  restoreLatestConversation();
 
   const composerNote = document.querySelector(".composer-note");
   if (composerNote) {

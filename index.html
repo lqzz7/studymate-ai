@@ -27,7 +27,7 @@
 
     <div class="header-meta">
       <span class="header-badge">AI 学习助手</span>
-      <span class="header-version">v0.3</span>
+      <span class="header-version">v0.4</span>
     </div>
   </header>
 
@@ -45,6 +45,17 @@
           本地模拟
         </span>
       </header>
+
+      <!-- 历史会话工具栏 -->
+      <div class="chat-toolbar">
+        <label class="visually-hidden" for="conversation-select">历史会话</label>
+        <select class="conversation-select" id="conversation-select">
+          <option value="">历史记录</option>
+        </select>
+        <button class="new-chat-button" id="new-chat-button" type="button">
+          ＋ 新对话
+        </button>
+      </div>
 
       <!-- 消息会由 js/app.js 追加到这里 -->
       <div class="chat-log" id="chat-log" role="log" aria-live="polite" aria-label="聊天记录">
@@ -157,7 +168,7 @@
 
   <footer class="site-footer">
     <span>StudyMate AI</span>
-    <span>六周 AI 应用开发实战 · 第 3 周 · 资料问答</span>
+    <span>六周 AI 应用开发实战 · 第 4 周 · 历史记录</span>
   </footer>
 
   <!-- Markdown 渲染与安全清理，必须放在 app.js 之前 -->

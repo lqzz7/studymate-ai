@@ -144,7 +144,7 @@ def list_conversations() -> list[dict]:
             FROM conversations AS c
             LEFT JOIN messages AS m ON m.conversation_id = c.id
             GROUP BY c.id, c.title, c.created_at, c.updated_at
-            ORDER BY c.updated_at DESC
+            ORDER BY c.updated_at DESC, c.id DESC
             """
         ).fetchall()
 

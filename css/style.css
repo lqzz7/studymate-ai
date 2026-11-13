@@ -378,6 +378,62 @@ svg {
   background: var(--gradient-primary);
 }
 
+/* 历史会话工具栏 */
+.chat-toolbar {
+  flex-shrink: 0;
+  padding: 9px 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.conversation-select {
+  flex: 1;
+  min-width: 0;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--text-soft);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.conversation-select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.new-chat-button {
+  flex-shrink: 0;
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--primary-strong);
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 0.18s ease, background 0.18s ease,
+    color 0.18s ease;
+}
+
+.new-chat-button:hover:not(:disabled) {
+  border-color: #a5b4fc;
+  background: #f8faff;
+  color: var(--primary-strong);
+}
+
+.new-chat-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .chat-log {
   flex: 1;
   min-height: 0;
@@ -1302,6 +1358,15 @@ svg {
 
   .panel-header {
     padding: 16px 18px;
+  }
+
+  .chat-toolbar {
+    padding: 8px 14px;
+  }
+
+  .conversation-select,
+  .new-chat-button {
+    height: 32px;
   }
 
   .chat-log {
