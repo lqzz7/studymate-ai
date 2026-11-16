@@ -845,16 +845,8 @@
       return;
     }
 
+    const previousFiles = selectedFiles;
     state.isUploading = true;
-
-    // 先清空后端旧资料，避免新文件上传失败时继续使用旧资料
-    if (selectedFiles.length > 0) {
-      try {
-        await fetch(API_MATERIALS_URL, { method: "DELETE" });
-      } catch (error) {
-        // 清空失败也继续尝试上传，成功时后端会覆盖旧资料
-      }
-    }
 
     selectedFiles = [
       {
@@ -880,9 +872,17 @@
       showUploadNotice(`已加载 ${result.filename}，共 ${result.chars} 字`);
     } catch (error) {
       const reason = error instanceof Error ? error.message : "未知错误";
-      selectedFiles[0].status = "error";
-      selectedFiles[0].error = reason;
-      showUploadNotice(`上传失败：${reason}`);
+
+      if (previousFiles.length > 0) {
+        // 新文件失败时，恢复旧资料显示；后端旧资料也还在
+        selectedFiles = previousFiles;
+      } else {
+        selectedFiles[0].status = "error";
+        selectedFiles[0].error = reason;
+      }
+
+      const suffix = previousFiles.length > 0 ? "，已保留原资料" : "";
+      showUploadNotice(`上传失败：${reason}${suffix}`);
     } finally {
       state.isUploading = false;
       renderFiles();
