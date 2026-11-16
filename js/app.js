@@ -329,6 +329,7 @@
       return {
         reply: data.reply.trim(),
         conversationId: data.conversation_id ?? null,
+        usedMaterial: data.used_material,
       };
     } catch (error) {
       if (error.name === "AbortError") {
@@ -399,6 +400,15 @@
       typingMessage.remove();
       appendMessage("ai", result.reply);
       setModeBadge(true);
+
+      // 后端已经没有资料，但页面还显示“已加载”
+      if (
+        result.usedMaterial === false &&
+        selectedFiles.some((file) => file.status === "uploaded")
+      ) {
+        clearMaterialState("后端资料已失效，请重新上传");
+      }
+
       refreshConversationList(state.conversationId);
     } catch (error) {
       typingMessage.remove();
@@ -679,6 +689,33 @@
     );
   }
 
+  function clearMaterialState(message) {
+    selectedFiles = [];
+    renderFiles();
+
+    if (message) {
+      showUploadNotice(message);
+    }
+  }
+
+  async function syncMaterialState() {
+    if (!selectedFiles.some((file) => file.status === "uploaded")) return;
+
+    try {
+      const response = await fetch(API_MATERIALS_URL);
+      if (!response.ok) return;
+
+      const data = await response.json();
+
+      // 后端重启后内存中的资料会消失，但页面还显示“已加载”
+      if (!data.active) {
+        clearMaterialState("后端资料已失效，请重新上传");
+      }
+    } catch (error) {
+      // 后端没启动时无法判断，先保持当前界面
+    }
+  }
+
   async function restoreMaterial() {
     try {
       const response = await fetch(API_MATERIALS_URL);
@@ -906,6 +943,14 @@
 
   window.addEventListener("drop", (event) => {
     event.preventDefault();
+  });
+
+  // 回到页面时，顺便确认后端资料是否还在
+  window.addEventListener("focus", syncMaterialState);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) {
+      syncMaterialState();
+    }
   });
 
   /* ---------- 10. 初始化 ---------- */
