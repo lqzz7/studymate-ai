@@ -524,12 +524,19 @@
         state.conversationId === null ? "" : String(state.conversationId);
 
       if (!options.silent) {
-        showHistoryStatus(
-          `历史会话加载失败：${
-            error instanceof Error ? error.message : "未知错误"
-          }`,
-          "error"
-        );
+        let reason = "未知错误";
+
+        if (error instanceof TypeError) {
+          reason = "无法连接后端，请检查服务是否启动";
+        } else if (error instanceof Error) {
+          reason = error.message;
+        }
+
+        if (reason === "HTTP 404") {
+          reason = "会话不存在";
+        }
+
+        showHistoryStatus(`历史会话加载失败：${reason}`, "error");
       }
     } finally {
       state.isLoadingHistory = false;
@@ -711,10 +718,7 @@
       warning = true;
     }
 
-    selectedFiles = [];
-    renderFiles();
-
-    showUploadNotice(
+    clearMaterialState(
       warning
         ? `已从界面移除 ${file.name}，但后端资料可能仍然存在`
         : `已移除 ${file.name}`
