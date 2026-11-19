@@ -22,6 +22,7 @@
   const sendButton = document.getElementById("send-button");
   const conversationSelect = document.getElementById("conversation-select");
   const newChatButton = document.getElementById("new-chat-button");
+  const historyStatus = document.getElementById("history-status");
 
   const dropzone = document.getElementById("dropzone");
   const fileInput = document.getElementById("file-input");
@@ -44,6 +45,7 @@
   const state = {
     isReplying: false,
     isUploading: false,
+    isLoadingHistory: false,
     conversationId: null,
   };
 
@@ -466,8 +468,27 @@
     conversationSelect.value = selectedId === null ? "" : String(selectedId);
   }
 
+  function showHistoryStatus(message, type = "info") {
+    historyStatus.textContent = message;
+    historyStatus.classList.toggle("is-error", type === "error");
+    historyStatus.hidden = false;
+  }
+
+  function clearHistoryStatus() {
+    historyStatus.textContent = "";
+    historyStatus.classList.remove("is-error");
+    historyStatus.hidden = true;
+  }
+
   async function openConversation(conversationId, options = {}) {
-    if (state.isReplying) return;
+    if (state.isReplying || state.isLoadingHistory) return;
+
+    state.isLoadingHistory = true;
+    updateHistoryControls();
+
+    if (!options.silent) {
+      showHistoryStatus("正在加载历史会话…");
+    }
 
     try {
       const response = await fetch(
@@ -497,23 +518,32 @@
       }
 
       conversationSelect.value = String(detail.conversation_id);
-      updateHistoryControls();
+      clearHistoryStatus();
     } catch (error) {
       conversationSelect.value =
         state.conversationId === null ? "" : String(state.conversationId);
 
       if (!options.silent) {
-        console.warn("加载历史会话失败：", error);
+        showHistoryStatus(
+          `历史会话加载失败：${
+            error instanceof Error ? error.message : "未知错误"
+          }`,
+          "error"
+        );
       }
+    } finally {
+      state.isLoadingHistory = false;
+      updateHistoryControls();
     }
   }
 
   function startNewConversation() {
-    if (state.isReplying) return;
+    if (state.isReplying || state.isLoadingHistory) return;
 
     state.conversationId = null;
     clearChatLog();
     showWelcome();
+    clearHistoryStatus();
     conversationSelect.value = "";
     input.value = "";
     updateSendState();
@@ -525,6 +555,7 @@
     try {
       const conversations = await fetchConversations();
       renderConversationOptions(conversations, selectedId);
+      clearHistoryStatus();
     } catch (error) {
       // 后端没启动时保留当前列表
     }
@@ -551,8 +582,9 @@
   }
 
   function updateHistoryControls() {
-    conversationSelect.disabled = state.isReplying;
-    newChatButton.disabled = state.isReplying;
+    const disabled = state.isReplying || state.isLoadingHistory;
+    conversationSelect.disabled = disabled;
+    newChatButton.disabled = disabled;
   }
 
   /* ---------- 8. 输入框与示例问题 ---------- */

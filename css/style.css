@@ -434,6 +434,22 @@ svg {
   cursor: not-allowed;
 }
 
+.history-status {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 7px 20px 8px;
+  border-bottom: 1px solid var(--border);
+  background: #f8faff;
+  color: var(--text-soft);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.history-status.is-error {
+  background: #fffbeb;
+  color: var(--amber);
+}
+
 .chat-log {
   flex: 1;
   min-height: 0;
@@ -1367,6 +1383,10 @@ svg {
   .conversation-select,
   .new-chat-button {
     height: 32px;
+  }
+
+  .history-status {
+    padding: 7px 14px 8px;
   }
 
   .chat-log {
