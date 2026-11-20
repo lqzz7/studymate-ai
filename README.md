@@ -4,7 +4,7 @@
 
 当前是 **第 5 周版本（v0.5）**：网页已经接入 FastAPI、OpenRouter 和 SQLite；可以上传 TXT / Markdown 资料，让 AI 依据资料回答和总结；对话会保存到本地数据库，并支持多轮上下文与历史会话切换。第 5 周完成了错误修复、加载状态、提示词优化和完整回归测试。后端不可用时会自动回退到本地模拟回复。
 
-- 最后更新：2026-11-19
+- 最后更新：2026-11-20
 - 运行方式：本地前端 + 本地后端
 - 技术栈：HTML5 / CSS3 / 原生 JavaScript / Python / FastAPI / OpenRouter
 
@@ -46,6 +46,8 @@ StudyMate AI 的目标是帮助学习者完成三件事：
 | 历史加载状态与错误提示 | ✅ |
 | 提示词与回答格式优化 | ✅ |
 | 第 5 周完整回归测试 | ✅ |
+| 本地从零克隆复现 | ✅ |
+| 依赖版本锁定 | ✅ |
 | 删除 / 重命名会话 | ⬜ 后续 |
 | PDF 解析 | ⬜ 后续 |
 | 完整深色模式 | ⬜ 后续完善 |
@@ -181,6 +183,24 @@ studymate-ai/
 ```powershell
 python --version
 ```
+
+### 已验证环境
+
+本项目在以下环境中完成从零克隆复现：
+
+| 项目 | 版本 |
+|---|---|
+| 操作系统 | Windows 11 |
+| Python | 3.12.10 |
+| FastAPI | 0.162.0 |
+| Uvicorn | 0.54.0 |
+| python-dotenv | 1.2.4 |
+| httpx | 0.28.1 |
+| python-multipart | 0.0.33 |
+| AI 模型 | OpenRouter `openrouter/free` |
+| 浏览器 | Chrome / Edge |
+
+直接依赖已经固定在 `server/requirements.txt` 中。
 
 ### 1. 安装后端依赖
 
@@ -501,7 +521,8 @@ API Key 只存在于后端和 OpenRouter 请求头中，浏览器看不到。
 ### 基础检查
 
 - [ ] `python --version` 能显示 Python 3.10+
-- [ ] `python -m pip install -r server\requirements.txt` 成功
+- [ ] `python -m pip install -r server\requirements.txt` 成功，版本与文件一致
+- [ ] 全新克隆目录中没有 `server/.env`、`server/studymate.db`
 - [ ] `server/.env` 存在，且 `git check-ignore -v server/.env` 有输出
 - [ ] 后端能在 8000 端口启动
 - [ ] `http://127.0.0.1:8000/docs` 能打开
@@ -674,6 +695,7 @@ API Key 只存在于后端和 OpenRouter 请求头中，浏览器看不到。
 | 2026-11-11 | 增加 SQLite 数据层，聊天保存消息并支持多轮上下文 |
 | 2026-11-13 | 增加历史会话接口和前端历史界面，刷新恢复最近会话 |
 | 2026-11-19 | 第 5 周稳定性修复：资料状态同步、上传失败保留旧资料、历史加载提示、提示词优化、代码清理 |
+| 2026-11-20 | 从 v0.5.0 全新克隆复现通过，固定依赖版本并记录已验证环境 |
 
 相关提交：
 

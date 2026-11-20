@@ -1,5 +1,6 @@
-fastapi
-uvicorn[standard]
-python-dotenv
-httpx
-python-multipart
+# 已在 Windows 11 + Python 3.12.10 上验证
+fastapi==0.162.0
+uvicorn[standard]==0.54.0
+python-dotenv==1.2.4
+httpx==0.28.1
+python-multipart==0.0.33
